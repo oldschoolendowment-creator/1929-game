@@ -68,10 +68,95 @@ const ROUNDS = {
     r12: { dow: 99, priceLevel: 76.4, unemployment: 22, sourced: false }
   },
 
+  // Real historical monthly prices, 1929-1933, for the two reference
+  // charts (separate from the game's own invented round-by-round
+  // prices in `market` above). Each round has an `asOfDate` field —
+  // the charts only ever show data up to that date, so they reveal
+  // more of the real history as the game progresses.
+  //
+  // Both are monthly, not daily — daily Dow/gold data from this era
+  // isn't available from free sources. Dow is from the seaborn-data
+  // "dowjones.csv" dataset (itself sourced from the NBER Macrohistory
+  // database). Gold is from the datasets/gold-prices "monthly.csv"
+  // dataset. Gold was legally fixed by the US government for most of
+  // this window, which is why it only has 5 distinct values across
+  // 60 months — that flatness is real, not a data gap.
+  historicalPrices: {
+    source: "Dow: seaborn-data dowjones.csv (NBER Macrohistory). Gold: datasets/gold-prices monthly.csv.",
+    dow: [
+      { date: "1929-01", price: 307.25 }, { date: "1929-02", price: 309.0 },
+      { date: "1929-03", price: 308.85 }, { date: "1929-04", price: 309.2 },
+      { date: "1929-05", price: 310.25 }, { date: "1929-06", price: 316.45 },
+      { date: "1929-07", price: 341.45 }, { date: "1929-08", price: 359.15 },
+      { date: "1929-09", price: 362.35 }, { date: "1929-10", price: 291.5 },
+      { date: "1929-11", price: 228.2 },  { date: "1929-12", price: 247.2 },
+      { date: "1930-01", price: 255.65 }, { date: "1930-02", price: 267.4 },
+      { date: "1930-03", price: 278.25 }, { date: "1930-04", price: 285.5 },
+      { date: "1930-05", price: 266.7 },  { date: "1930-06", price: 243.15 },
+      { date: "1930-07", price: 229.8 },  { date: "1930-08", price: 228.8 },
+      { date: "1930-09", price: 225.0 },  { date: "1930-10", price: 198.75 },
+      { date: "1930-11", price: 180.95 }, { date: "1930-12", price: 172.15 },
+      { date: "1931-01", price: 167.25 }, { date: "1931-02", price: 181.55 },
+      { date: "1931-03", price: 180.05 }, { date: "1931-04", price: 158.0 },
+      { date: "1931-05", price: 141.45 }, { date: "1931-06", price: 139.3 },
+      { date: "1931-07", price: 145.35 }, { date: "1931-08", price: 139.8 },
+      { date: "1931-09", price: 118.35 }, { date: "1931-10", price: 98.1 },
+      { date: "1931-11", price: 103.4 },  { date: "1931-12", price: 82.8 },
+      { date: "1932-01", price: 78.55 },  { date: "1932-02", price: 78.9 },
+      { date: "1932-03", price: 81.05 },  { date: "1932-04", price: 64.05 },
+      { date: "1932-05", price: 51.85 },  { date: "1932-06", price: 46.85 },
+      { date: "1932-07", price: 47.75 },  { date: "1932-08", price: 64.4 },
+      { date: "1932-09", price: 71.0 },   { date: "1932-10", price: 65.3 },
+      { date: "1932-11", price: 62.2 },   { date: "1932-12", price: 58.85 },
+      { date: "1933-01", price: 61.85 },  { date: "1933-02", price: 55.15 },
+      { date: "1933-03", price: 57.75 },  { date: "1933-04", price: 66.7 },
+      { date: "1933-05", price: 83.3 },   { date: "1933-06", price: 93.8 },
+      { date: "1933-07", price: 98.55 },  { date: "1933-08", price: 98.85 },
+      { date: "1933-09", price: 99.45 },  { date: "1933-10", price: 91.65 },
+      { date: "1933-11", price: 95.45 },  { date: "1933-12", price: 99.05 }
+    ],
+    gold: [
+      { date: "1929-01", price: 20.63 }, { date: "1929-02", price: 20.63 },
+      { date: "1929-03", price: 20.63 }, { date: "1929-04", price: 20.63 },
+      { date: "1929-05", price: 20.63 }, { date: "1929-06", price: 20.63 },
+      { date: "1929-07", price: 20.63 }, { date: "1929-08", price: 20.63 },
+      { date: "1929-09", price: 20.63 }, { date: "1929-10", price: 20.63 },
+      { date: "1929-11", price: 20.63 }, { date: "1929-12", price: 20.63 },
+      { date: "1930-01", price: 20.65 }, { date: "1930-02", price: 20.65 },
+      { date: "1930-03", price: 20.65 }, { date: "1930-04", price: 20.65 },
+      { date: "1930-05", price: 20.65 }, { date: "1930-06", price: 20.65 },
+      { date: "1930-07", price: 20.65 }, { date: "1930-08", price: 20.65 },
+      { date: "1930-09", price: 20.65 }, { date: "1930-10", price: 20.65 },
+      { date: "1930-11", price: 20.65 }, { date: "1930-12", price: 20.65 },
+      { date: "1931-01", price: 17.06 }, { date: "1931-02", price: 17.06 },
+      { date: "1931-03", price: 17.06 }, { date: "1931-04", price: 17.06 },
+      { date: "1931-05", price: 17.06 }, { date: "1931-06", price: 17.06 },
+      { date: "1931-07", price: 17.06 }, { date: "1931-08", price: 17.06 },
+      { date: "1931-09", price: 17.06 }, { date: "1931-10", price: 17.06 },
+      { date: "1931-11", price: 17.06 }, { date: "1931-12", price: 17.06 },
+      { date: "1932-01", price: 20.69 }, { date: "1932-02", price: 20.69 },
+      { date: "1932-03", price: 20.69 }, { date: "1932-04", price: 20.69 },
+      { date: "1932-05", price: 20.69 }, { date: "1932-06", price: 20.69 },
+      { date: "1932-07", price: 20.69 }, { date: "1932-08", price: 20.69 },
+      { date: "1932-09", price: 20.69 }, { date: "1932-10", price: 20.69 },
+      { date: "1932-11", price: 20.69 }, { date: "1932-12", price: 20.69 },
+      { date: "1933-01", price: 26.33 }, { date: "1933-02", price: 26.33 },
+      { date: "1933-03", price: 26.33 }, { date: "1933-04", price: 26.33 },
+      { date: "1933-05", price: 26.33 }, { date: "1933-06", price: 26.33 },
+      { date: "1933-07", price: 26.33 }, { date: "1933-08", price: 26.33 },
+      { date: "1933-09", price: 26.33 }, { date: "1933-10", price: 26.33 },
+      { date: "1933-11", price: 26.33 }, { date: "1933-12", price: 26.33 }
+    ]
+  },
+
   rounds: [
     {
       id: "r1",
       date: "Spring 1929",
+      // Cutoff for the real historical price charts — see historicalPrices
+      // below. "Spring" is vague, so this uses late May as a reasonable
+      // reading of it.
+      asOfDate: "1929-05-31",
       headline: "RECORD PROFITS AS BOOM CONTINUES",
       situation: "Steel is setting records. Retail sales, construction starts and railroad revenues break every previous mark. You have $2,000 saved and a decision to make about the rest of your life.",
       historicalNote: "The combined net profits of 536 manufacturing and trading companies rose 36.6% over the same period in 1928. Unemployment sat around 4%. [SOURCED]",
@@ -100,6 +185,7 @@ const ROUNDS = {
     {
       id: "r2",
       date: "25 March 1929",
+      asOfDate: "1929-03-25",
       headline: "FEDERAL RESERVE WARNS ON SPECULATION",
       situation: "The market drops sharply on the Fed's warning. Two days later National City Bank pumps $25 million of credit into the market and the panic evaporates. Everyone concludes the Fed can be safely ignored.",
       historicalNote: "A mini-crash occurred on 25 March 1929 after the Federal Reserve warned of excessive speculation, averted two days later when National City Bank injected $25 million. Over $8.5 billion of margin loans were outstanding, worth more than all currency circulating in the United States. [SOURCED]",
@@ -135,6 +221,7 @@ const ROUNDS = {
     {
       id: "r3",
       date: "August 1929",
+      asOfDate: "1929-08-31",
       headline: "STEEL AND MOTOR SALES SLIP",
       situation: "Something is wrong underneath. Steel production is down. Car sales are down. Housebuilding has stalled. The stock market, meanwhile, has gained twenty per cent since May and nobody is reading the production figures.",
       historicalNote: "A minor recession began in August 1929, two months before the crash. Steel production and automobile and house sales notably declined while construction stagnated. The Fed had raised rates from 4% to 6% to combat speculation. [SOURCED]",
@@ -163,6 +250,7 @@ const ROUNDS = {
     {
       id: "r4",
       date: "September - November 1929",
+      asOfDate: "1929-11-30",
       headline: "BLACK TUESDAY",
       situation: "The Dow peaked at 381.17 on 3 September. London collapsed on the 20th when the Hatry group went down on fraud charges. On 24 October the market opened down eleven per cent. On the 29th it closed down twelve. There is a brief, convincing recovery on the 25th to the 27th. That window is your last clean exit.",
       historicalNote: "The Dow peaked at 381.17 on 3 September 1929 and would not regain that level until 23 November 1954. The London Stock Exchange crashed on 20 September after the Hatry Group collapse wiped out £24 million. There was a brief recovery 25-27 October. The market bottomed at 198.60 on 13 November. [SOURCED. The 260 bounce-window price referenced in the flavor text is invented and not mechanically applied.]",
@@ -198,6 +286,7 @@ const ROUNDS = {
     {
       id: "r5",
       date: "17 April 1930",
+      asOfDate: "1930-04-17",
       headline: "MARKET RECOVERS TO EARLY-1929 LEVELS",
       situation: "The Dow closes at 294.07. Back to where it was in January of last year. Economic forecasters are confidently predicting a rebound in 1931 and feel vindicated. The word being used everywhere is 'recovery'.",
       historicalNote: "The Dow reached a bear market rally peak of 294.07 on 17 April 1930, matching early-1929 levels but 30% below the September peak. Forecasters throughout 1930 optimistically predicted a rebound in 1931 and felt vindicated by the spring rally. 1930 saw GDP contract 8.5%, inflation of −6.4%, unemployment of 9%, and 1,350 bank failures. [SOURCED]",
@@ -233,6 +322,7 @@ const ROUNDS = {
     {
       id: "r6",
       date: "17 June 1930",
+      asOfDate: "1930-06-17",
       headline: "SMOOT-HAWLEY TARIFF SIGNED",
       situation: "Tariffs go up. Other countries respond in kind within months. Farm exports are the first to go, which strains every bank that lent to farmers, which is most of them.",
       historicalNote: "Exports fell from $5.2 billion in 1929 to $1.7 billion in 1933. Economists generally hold that Smoot-Hawley did not cause the Depression but worsened it and stunted recovery after 1933. Falling trade in manufactured goods led to layoffs and reduced corporate profits. [SOURCED]",
@@ -255,6 +345,7 @@ const ROUNDS = {
     {
       id: "r7",
       date: "December 1930",
+      asOfDate: "1930-12-31",
       headline: "BANK OF UNITED STATES CLOSES ITS DOORS",
       situation: "Caldwell and Company went down in November and took every small bank in Tennessee and Kentucky with it. Now the Bank of United States, the fourth largest in the country, has failed with $160 million of deposits inside it. There are queues in the street outside your own bank this morning.",
       historicalNote: "1,350 banks failed in 1930. Over 300 failed in December alone. The Bank of United States held over $160 million in deposits and its failure is widely considered the moment the banking collapse hit critical mass. There was no deposit insurance until 1933. [SOURCED]",
@@ -284,6 +375,7 @@ const ROUNDS = {
     {
       id: "r8",
       date: "May - June 1931",
+      asOfDate: "1931-06-30",
       headline: "CREDITANSTALT FAILS, EUROPE FOLLOWS",
       situation: "Austria's largest bank goes under and takes central Europe with it. In Chicago, banks that lent against real estate through the twenties are failing in rows. Prices are now falling more than nine per cent a year. The thing about a deflation is that doing nothing is a position.",
       historicalNote: "Creditanstalt represented 16% of Austria's GDP and became insolvent on 11 May 1931. Of 193 state-chartered banks in the Chicago area in 1929, only 35 survived to the end of 1933. 1931 saw 2,294 US bank failures, 28,285 business failures, unemployment at 16%, and inflation of −9.3%. [SOURCED]",
@@ -312,6 +404,7 @@ const ROUNDS = {
     {
       id: "r9",
       date: "21 September 1931",
+      asOfDate: "1931-09-21",
       headline: "BRITAIN ABANDONS THE GOLD STANDARD",
       situation: "Sterling falls twenty-five per cent overnight. Everyone predicted catastrophe. Instead British exports get cheaper, the Bank of England cuts rates from six per cent to two, and Britain begins to recover. The Federal Reserve, defending the dollar's gold peg, does the exact opposite and raises rates from 1.5% to 3.5%.",
       historicalNote: "Britain left the gold standard on 21 September 1931. The Bank of England cut rates from 6.00% to 2.00%. Norway, Sweden, Denmark and Finland followed within weeks and all recovered earlier than countries that stayed on gold. The Fed raised from 1.50% to 3.50% to maintain the gold standard, worsening the Depression. As deflation intensified, real interest rates were magnified and rewarded those who held money. [SOURCED]",
@@ -340,6 +433,7 @@ const ROUNDS = {
     {
       id: "r10",
       date: "8 July 1932",
+      asOfDate: "1932-07-08",
       headline: "DOW CLOSES AT 41.22",
       situation: "Eighty-nine per cent below the September 1929 peak. One in four Americans is out of work. Two million are homeless. Industrial production is half what it was in 1929. Taxes have just gone up.",
       historicalNote: "The Dow bottomed at 41.22 on 8 July 1932, an 89% loss from the 1929 peak and the lowest level recorded in the 20th century. Unemployment peaked at 25%. Two million were homeless. The Revenue Act of 1932 raised personal, corporate and sales taxes on 6 June. US nominal GDP bottomed at $57 billion, down from $105 billion in 1929. [SOURCED]",
@@ -369,6 +463,7 @@ const ROUNDS = {
     {
       id: "r11",
       date: "February - April 1933",
+      asOfDate: "1933-04-30",
       headline: "THE BANKS ARE SHUT",
       situation: "Michigan declares a bank holiday on 14 February. Within three weeks thirty-eight states have followed. On 6 March all banking in the country stops for a week. When it reopens, four thousand banks with $3.6 billion of deposits are simply gone forever. Then on 5 April the President makes private gold holding illegal.",
       historicalNote: "Michigan declared the first indefinite bank holiday on 14 February 1933. By 6 March, 38 states had followed and Executive Order 2009 suspended all banking for a week. The Emergency Banking Act of 9 March closed over 4,000 irreparably insolvent banks holding $3.6 billion in deposits, while banks controlling 90% of activity reopened by 15 March. Executive Order 6102 forbade hoarding of gold coin, bullion and certificates from 1 May 1933. [SOURCED]",
@@ -406,6 +501,7 @@ const ROUNDS = {
     {
       id: "r12",
       date: "December 1933",
+      asOfDate: "1933-12-31",
       headline: "PRODUCTION UP 57 PER CENT SINCE MARCH",
       situation: "Industrial production has climbed from 54.3 in March to 85.5 in July. Deposit insurance now exists. Investment banking has been split from commercial banking. Four million people are working for the Civil Works Administration. Prohibition ended three weeks ago.",
       historicalNote: "The Federal Reserve industrial production index rebounded to 85.5 in July 1933, a 57% increase over March's 54.3. The 1933 Banking Act of 16 June created the FDIC and separated commercial from investment banking under Glass-Steagall. The Civil Works Administration created 8 November employed over 4 million people. Prohibition was repealed nationally on 5 December. Inflation turned positive at 1%. [SOURCED]",

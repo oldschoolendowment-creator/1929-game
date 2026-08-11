@@ -84,6 +84,32 @@
     color: #666;
     margin: 0 0 4px 0;
   }
+  #historical-charts {
+    margin-bottom: 24px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #ccc;
+  }
+  #historical-charts > div {
+    margin-bottom: 20px;
+  }
+  /* Chart.js needs ITS OWN sized container — not one shared with the
+     title/source text — or it fights those siblings for space. */
+  .chart-canvas-wrap {
+    height: 180px;
+  }
+  #historical-charts h3 {
+    font-family: sans-serif;
+    font-size: 1em;
+    font-weight: bold;
+    text-align: center;
+    margin: 0 0 8px 0;
+  }
+  .chart-source {
+    font-family: sans-serif;
+    font-size: 0.75em;
+    color: #888;
+    margin: 4px 0 0 0;
+  }
 </style>
 </head>
 <body>
@@ -108,6 +134,23 @@
     <div>
       <h3>Gold</h3>
       <canvas id="gold-chart" height="120"></canvas>
+    </div>
+  </div>
+
+  <!-- Real historical prices (not the game's own invented numbers above).
+       Each shows real data only up to the current round's date — see
+       asOfDate on each round in rounds.js — so more of the real history
+       is revealed as you play, same idea as the two charts above. -->
+  <div id="historical-charts">
+    <div>
+      <h3>Dow Jones Industrial Average</h3>
+      <div class="chart-canvas-wrap"><canvas id="historical-dow-chart"></canvas></div>
+      <p class="chart-source" id="historical-dow-source"></p>
+    </div>
+    <div>
+      <h3>Gold Price ($/oz)</h3>
+      <div class="chart-canvas-wrap"><canvas id="historical-gold-chart"></canvas></div>
+      <p class="chart-source" id="historical-gold-source"></p>
     </div>
   </div>
 
@@ -207,6 +250,72 @@
       goldChart.data.labels[0] = round.date;
       goldChart.data.datasets[0].data[0] = getAssetPrice("gold", round.id);
       goldChart.update();
+    }
+
+    // The two REAL historical price charts (separate from the game's
+    // own invented round-by-round prices above). Both start empty and
+    // are rebuilt each round to show every real data point up to that
+    // round's asOfDate — see updateHistoricalCharts below.
+    var historicalDowChart;
+    var historicalGoldChart;
+
+    function initHistoricalCharts() {
+      historicalDowChart = new Chart(document.getElementById("historical-dow-chart"), {
+        type: "line",
+        data: { labels: [], datasets: [{ data: [], borderColor: "#a33", borderWidth: 1.5, pointRadius: 0, tension: 0 }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false } },
+          // Fixed 0-400 ceiling, matching the range Dow actually moved
+          // in during this era.
+          scales: {
+            y: { beginAtZero: true, max: 400 },
+            x: { ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true } }
+          }
+        }
+      });
+
+      historicalGoldChart = new Chart(document.getElementById("historical-gold-chart"), {
+        type: "line",
+        data: { labels: [], datasets: [{ data: [], borderColor: "#a90", borderWidth: 1.5, pointRadius: 0, tension: 0 }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false } },
+          // No fixed ceiling here (unlike Dow) — gold's real 1929-1933
+          // range (about $17-26) is too narrow to read against a 0-400
+          // scale, so this lets the axis fit the real movement.
+          scales: {
+            y: { ticks: { font: { size: 9 } } },
+            x: { ticks: { font: { size: 9 }, maxRotation: 0, autoSkip: true } }
+          }
+        }
+      });
+
+      document.getElementById("historical-dow-source").textContent = "Source: " + ROUNDS.historicalPrices.source;
+      document.getElementById("historical-gold-source").textContent = "Source: " + ROUNDS.historicalPrices.source;
+    }
+
+    // Rebuilds both historical charts from scratch, showing every real
+    // data point up to (and including) the current round's asOfDate.
+    // Called once per round from renderRound, same as updateCharts.
+    function updateHistoricalCharts(round) {
+      // Monthly data is keyed like "1929-11"; asOfDate is a full day
+      // like "1929-11-30". Compare at month precision.
+      var cutoffMonth = round.asOfDate.slice(0, 7);
+
+      var dowPoints = ROUNDS.historicalPrices.dow.filter(function (p) { return p.date <= cutoffMonth; });
+      historicalDowChart.data.labels = dowPoints.map(function (p) { return p.date; });
+      historicalDowChart.data.datasets[0].data = dowPoints.map(function (p) { return p.price; });
+      historicalDowChart.update();
+
+      var goldPoints = ROUNDS.historicalPrices.gold.filter(function (p) { return p.date <= cutoffMonth; });
+      historicalGoldChart.data.labels = goldPoints.map(function (p) { return p.date; });
+      historicalGoldChart.data.datasets[0].data = goldPoints.map(function (p) { return p.price; });
+      historicalGoldChart.update();
     }
 
     // Looks up what one "unit" of an asset costs in a given round.
@@ -471,6 +580,7 @@
       // Add this round's price point to both charts. Once per round,
       // right here, covers every round including the final one.
       updateCharts(round);
+      updateHistoricalCharts(round);
 
       // Clear out the old choice buttons before adding new ones.
       var choicesDiv = document.getElementById("choices");
@@ -539,6 +649,7 @@
     // Set up the (empty) charts before the first round tries to add a
     // point to them.
     initCharts();
+    initHistoricalCharts();
 
     // Show the first round as soon as the page loads.
     renderRound(currentRoundIndex);
