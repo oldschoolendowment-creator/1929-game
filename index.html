@@ -578,9 +578,12 @@
       document.getElementById("situation").textContent = round.situation;
 
       // Add this round's price point to both charts. Once per round,
-      // right here, covers every round including the final one.
-      updateCharts(round);
-      updateHistoricalCharts(round);
+      // right here, covers every round including the final one. Skipped
+      // entirely if the charts failed to load — see chartsAvailable.
+      if (chartsAvailable) {
+        updateCharts(round);
+        updateHistoricalCharts(round);
+      }
 
       // Clear out the old choice buttons before adding new ones.
       var choicesDiv = document.getElementById("choices");
@@ -646,10 +649,20 @@
     // Fill in the status bar with the starting values.
     updateStatusBar();
 
-    // Set up the (empty) charts before the first round tries to add a
-    // point to them.
-    initCharts();
-    initHistoricalCharts();
+    // Whether the charts loaded successfully. Chart.js comes from an
+    // external CDN — if a player's ad blocker or network blocks it,
+    // set up would throw and, without this, take the whole page down
+    // with it. The charts are a nice-to-have; the game text and
+    // choices below must still work even if they can't load.
+    var chartsAvailable = true;
+    try {
+      initCharts();
+      initHistoricalCharts();
+    } catch (e) {
+      chartsAvailable = false;
+      document.getElementById("charts").style.display = "none";
+      document.getElementById("historical-charts").style.display = "none";
+    }
 
     // Show the first round as soon as the page loads.
     renderRound(currentRoundIndex);
