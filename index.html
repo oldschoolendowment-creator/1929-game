@@ -118,21 +118,30 @@
 </head>
 <body>
 
-  <!-- Shows cash, debt, stocks and gold. Starts at the config values and
+  <!-- Shows cash, debt, shares and gold. Starts at the config values and
        updates as choices are clicked. -->
   <div id="statusbar">
     <span>Cash: $<span id="stat-cash"></span></span>
     <span>Debt: $<span id="stat-debt"></span></span>
-    <span>Stocks: $<span id="stat-stocks"></span></span>
+    <span>Shares: $<span id="stat-stocks"></span></span>
     <span>Gold: $<span id="stat-gold"></span></span>
   </div>
 
-  <!-- The game's own price charts. Each shows a single bar for the current
-       round's price, replaced (not accumulated) each round. -->
+  <!-- The player's own numbers, one bar each — same figures as the status
+       bar above, just as a visual cue. Replaced (not accumulated) each
+       round. Order matches the status bar: cash, debt, shares, gold. -->
   <div id="charts">
     <div>
-      <h3>Stock</h3>
-      <canvas id="dow-chart" height="120"></canvas>
+      <h3>Cash</h3>
+      <canvas id="cash-chart" height="120"></canvas>
+    </div>
+    <div>
+      <h3>Debt</h3>
+      <canvas id="debt-chart" height="120"></canvas>
+    </div>
+    <div>
+      <h3>Shares</h3>
+      <canvas id="shares-chart" height="120"></canvas>
     </div>
     <div>
       <h3>Gold</h3>
@@ -218,55 +227,55 @@
       document.getElementById("stat-gold").textContent = state.goldValue;
     }
 
-    // The game's own two price charts. Each is a single bar for the
-    // current round's price, replaced (not accumulated) each round.
-    var dowChart;
-    var goldChart;
+    // The game's own four charts, one bar each: cash, debt, shares, gold.
+    // Same order as the status bar. Each is a single bar for the current
+    // round's numbers, replaced (not accumulated) each round.
+    var cashChart, debtChart, sharesChart, goldChart;
 
-    function initCharts() {
-      // No fixed ceiling here — unlike the historical charts below, these
-      // track the PLAYER'S OWN holdings in dollars (same numbers as the
-      // status bar), which can end the game anywhere from $0 into the
-      // thousands depending how they played. Auto-scaling lets the axis
-      // fit whatever that turns out to be.
-      dowChart = new Chart(document.getElementById("dow-chart"), {
+    // Builds one of the four single-bar charts. All four use the same
+    // shape, just a different canvas and colour, so this avoids writing
+    // near-identical Chart.js setup code four times over.
+    function makeBarChart(canvasId, color) {
+      return new Chart(document.getElementById(canvasId), {
         type: "bar",
-        data: { labels: [""], datasets: [{ label: "Stocks ($)", data: [0], backgroundColor: "#a33" }] },
+        data: { labels: [""], datasets: [{ data: [0], backgroundColor: color }] },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           animation: false,
           plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true } }
-        }
-      });
-
-      goldChart = new Chart(document.getElementById("gold-chart"), {
-        type: "bar",
-        data: { labels: [""], datasets: [{ label: "Gold ($)", data: [0], backgroundColor: "#a90" }] },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: false,
-          plugins: { legend: { display: false } },
+          // No fixed ceiling — unlike the historical charts below, these
+          // track the PLAYER'S OWN numbers in dollars (same as the status
+          // bar), which can end the game anywhere from $0 into the
+          // thousands depending how they played. Auto-scaling fits that.
           scales: { y: { beginAtZero: true } }
         }
       });
     }
 
-    // Replaces each chart's single bar with the player's current holdings
-    // value for that asset — the same numbers shown in the status bar,
-    // not the underlying market price (that's what the historical charts
-    // further down are for). Called once per round from renderRound, so
-    // the bar always shows where things stand right now, not a history.
-    function updateCharts(round) {
-      dowChart.data.labels[0] = round.date;
-      dowChart.data.datasets[0].data[0] = state.stocksValue;
-      dowChart.update();
+    function initCharts() {
+      cashChart = makeBarChart("cash-chart", "#369");
+      debtChart = makeBarChart("debt-chart", "#c60");
+      sharesChart = makeBarChart("shares-chart", "#a33");
+      goldChart = makeBarChart("gold-chart", "#a90");
+    }
 
-      goldChart.data.labels[0] = round.date;
+    // Replaces each chart's single bar with the player's current numbers
+    // — the same figures shown in the status bar, not any underlying
+    // market price (that's what the historical charts further down are
+    // for). Called once per round from renderRound, so each bar always
+    // shows where things stand right now, not a history.
+    function updateCharts(round) {
+      [cashChart, debtChart, sharesChart, goldChart].forEach(function (chart) {
+        chart.data.labels[0] = round.date;
+      });
+      cashChart.data.datasets[0].data[0] = Math.round(state.cash);
+      debtChart.data.datasets[0].data[0] = Math.round(state.debt);
+      sharesChart.data.datasets[0].data[0] = state.stocksValue;
       goldChart.data.datasets[0].data[0] = state.goldValue;
-      goldChart.update();
+      [cashChart, debtChart, sharesChart, goldChart].forEach(function (chart) {
+        chart.update();
+      });
     }
 
     // The two REAL historical price charts (separate from the game's
