@@ -8,7 +8,7 @@
 <script data-goatcounter="https://oldschoolendowment.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
 
-<!-- Chart.js, for the two price charts below. -->
+<!-- Chart.js, for the four price charts below. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   /* Some hosts (like itch.io) embed this page in a fixed-size box that
@@ -40,6 +40,10 @@
   }
   #situation {
     margin-bottom: 24px;
+    /* The path-specific paragraph is joined on with a blank line. Without
+       this, textContent collapses that into a single space and the two
+       paragraphs run together. */
+    white-space: pre-wrap;
   }
   button {
     display: block;
@@ -115,7 +119,7 @@
 <body>
 
   <!-- Shows cash, debt, stocks and gold. Starts at the config values and
-       updates as choices are clicked (cash and debt only, for now). -->
+       updates as choices are clicked. -->
   <div id="statusbar">
     <span>Cash: $<span id="stat-cash"></span></span>
     <span>Debt: $<span id="stat-debt"></span></span>
@@ -123,9 +127,8 @@
     <span>Gold: $<span id="stat-gold"></span></span>
   </div>
 
-  <!-- Price charts. Each fills in one more point as a new round is shown —
-       you only ever see history up to where you currently are, same as
-       the player would have at the time. -->
+  <!-- The game's own price charts. Each shows a single bar for the current
+       round's price, replaced (not accumulated) each round. -->
   <div id="charts">
     <div>
       <h3>Stock</h3>
@@ -181,12 +184,22 @@
       stocksValue: ROUNDS.config.startingStocks,
       goldValue: ROUNDS.config.startingGold,
       // The player's ongoing per-round earnings. A choice's "income"
-      // effect changes this, but — per the schema note in rounds.js —
-      // only takes effect starting the following round.
+      // effect changes this, but only takes effect starting the following
+      // round — see creditIncome below. "incomeMultiplier" scales it
+      // instead of adding to it (used once, for closing the store).
       income: ROUNDS.config.startingIncome,
       // Flags a choice has set so far, e.g. "cash_at_home". Used by
       // other choices' "requires" gate later in the game.
-      flags: []
+      flags: [],
+      // Which life the player chose in round 1: "job" or "business".
+      // Stays null until a round 1 choice sets it. Rounds later in the
+      // game show different choices and different text depending on it.
+      path: null,
+      // True once the player's earnings have been permanently wiped out
+      // (the 1932 layoff, or a business closing). Kept separate from
+      // income being zero, because a player can be laid off and then
+      // take relief work, which puts income back above zero.
+      lostLivelihood: false
     };
 
     // True if the player currently has the given flag set.
@@ -205,8 +218,8 @@
       document.getElementById("stat-gold").textContent = state.goldValue;
     }
 
-    // The two price charts. Both start empty and gain one point per round
-    // — see updateCharts below, called once per round from renderRound.
+    // The game's own two price charts. Each is a single bar for the
+    // current round's price, replaced (not accumulated) each round.
     var dowChart;
     var goldChart;
 
@@ -285,7 +298,7 @@
           maintainAspectRatio: false,
           animation: false,
           plugins: { legend: { display: false } },
-          // No fixed ceiling here (unlike Dow) — gold's real 1929-1933
+          // No fixed ceiling here (unlike Dow) — gold's real 1920-1933
           // range (about $17-26) is too narrow to read against a 0-400
           // scale, so this lets the axis fit the real movement.
           scales: {
@@ -381,11 +394,12 @@
       state.goldValue = Math.round(state.goldUnits * getAssetPrice("gold", roundId));
     }
 
-    // Applies a choice's effects to the state: cash, debt, buy, sell and
-    // income. Note: an "income" effect changes the ongoing baseline for
-    // future rounds — it does not add money to cash right now. Crediting
-    // the existing baseline to cash happens separately, once per round,
-    // in the click handler below (see creditIncome).
+    // Applies a choice's effects to the state: cash, debt, buy, sell,
+    // income, incomeMultiplier, path and flags. Note: an "income" effect
+    // changes the ongoing baseline for future rounds — it does not add
+    // money to cash right now. Crediting the existing baseline to cash
+    // happens separately, once per round, in the click handler below
+    // (see creditIncome).
     function applyEffects(effects, roundId, overridePrice) {
       if (typeof effects.cash === "number") {
         state.cash = state.cash + effects.cash;
@@ -395,6 +409,18 @@
       }
       if (typeof effects.income === "number") {
         state.income = state.income + effects.income;
+      }
+      // "path" records the life the player picked in round 1. Only the
+      // three round 1 choices use it. Everything after that reads it.
+      if (typeof effects.path === "string") {
+        state.path = effects.path;
+      }
+      // "incomeMultiplier" scales the ongoing earnings baseline instead
+      // of adding to it. Used for closing the business, where the whole
+      // income is cut to a proportion rather than a fixed dollar amount.
+      // Applied after any "income" change above, so a choice can do both.
+      if (typeof effects.incomeMultiplier === "number") {
+        state.income = Math.round(state.income * effects.incomeMultiplier);
       }
       if (effects.buy) {
         applyBuy(effects.buy, roundId, overridePrice);
@@ -411,11 +437,42 @@
       }
     }
 
+    // Checks a choice's "requires" gate (if it has one) against the
+    // current state. Returns true if the choice should be offered.
+    function choiceIsAvailable(choice) {
+      if (!choice.requires) {
+        return true;
+      }
+      if (choice.requires.debt) {
+        return state.debt > 0;
+      }
+      if (choice.requires.gold) {
+        return state.goldUnits > 0;
+      }
+      if (choice.requires.flag) {
+        return hasFlag(choice.requires.flag);
+      }
+      // Only offer this choice if the player picked that life in round 1.
+      // Written as an early return like the others: a choice can only
+      // carry one kind of gate, which keeps this function boring.
+      if (choice.requires.path) {
+        return state.path === choice.requires.path;
+      }
+      return true;
+    }
+
+    // Adds this round's earnings (the income baseline built up by
+    // earlier choices) to cash. Called once at the start of handling
+    // each round, before that round's own choice can change the baseline.
+    function creditIncome() {
+      state.cash = state.cash + state.income;
+    }
+
     // --- Special-round rules ---
-    // These three rounds have mechanics described in rounds.js as plain
-    // "specialRule" text because they don't fit the six-key effects model.
-    // Handled here as one-off rules keyed to the round's id, same as the
-    // margin call rule is handled separately from ordinary effects.
+    // These rounds have mechanics described in rounds.js as plain
+    // "specialRule" text because they don't fit the eight-key effects
+    // model. Handled here as one-off rules keyed to the round's id, same
+    // as the margin call rule is handled separately from ordinary effects.
 
     // Round 4: the source material resolves choices at an intraday
     // "bounce" price of 260, then revalues whatever's left at the
@@ -435,37 +492,41 @@
       // cash_at_home alone (fully withdrawn): no loss.
     }
 
-    // Round 10: a player carrying the income_exposed flag from round 6
-    // loses their income source this round, regardless of what they
-    // choose here. income_protected means income continues as normal,
-    // which is what happens anyway if we simply do nothing special.
-    function round10IncomeIsExposed() {
-      return hasFlag("income_exposed");
+    // Round 8 (1931): short time. Anyone still on the job path has their
+    // income cut by 40%, because the plant no longer has enough work to
+    // need them full time. A player carrying income_exposed from round 6
+    // does not go on short time — their line shuts and they lose the lot,
+    // fourteen months before everyone else. Business players are untouched
+    // here; their bad round is round 10.
+    function applyRound8ShortTime() {
+      if (state.path !== "job") {
+        return;
+      }
+      if (hasFlag("income_exposed")) {
+        state.income = 0;
+        state.lostLivelihood = true;
+        state.flags.push("laid_off_1931");
+      } else {
+        state.income = Math.round(state.income * 0.6);
+      }
     }
 
-    // Checks a choice's "requires" gate (if it has one) against the
-    // current state. Returns true if the choice should be offered.
-    function choiceIsAvailable(choice) {
-      if (!choice.requires) {
-        return true;
+    // Round 10 (1932): the layoff. Every job-path player still earning
+    // loses their wage, before they get to choose anything. This is not
+    // avoidable and is not a punishment for an earlier mistake — at 25%
+    // unemployment it is simply the base rate, and the game should not
+    // pretend a right answer existed. income_protected from round 6 means
+    // two days a week on the domestic line instead of nothing at all.
+    //
+    // Runs BEFORE the round's income is credited to cash, so the player
+    // does not get paid for a job they no longer have.
+    function applyRound10Layoff() {
+      if (state.path !== "job" || state.lostLivelihood) {
+        return;
       }
-      if (choice.requires.debt) {
-        return state.debt > 0;
-      }
-      if (choice.requires.gold) {
-        return state.goldUnits > 0;
-      }
-      if (choice.requires.flag) {
-        return hasFlag(choice.requires.flag);
-      }
-      return true;
-    }
-
-    // Adds this round's earnings (the income baseline built up by
-    // earlier choices) to cash. Called once at the start of handling
-    // each round, before that round's own choice can change the baseline.
-    function creditIncome() {
-      state.cash = state.cash + state.income;
+      state.income = hasFlag("income_protected") ? 150 : 0;
+      state.lostLivelihood = true;
+      state.flags.push("laid_off_1932");
     }
 
     // The margin call rule from config.marginCallRule: if debt is more
@@ -505,8 +566,7 @@
     // 150% of starting, and "preserved" required zero debt with no
     // fallback for players near that band who still had some debt).
     // This picks non-overlapping thresholds that cover every case
-    // rather than leaving anyone without an ending. See the written
-    // explanation delivered alongside this change for the exact bands.
+    // rather than leaving anyone without an ending.
     function pickFinalEnding(realNetWorth, startingRealNetWorth) {
       if (realNetWorth <= 0) {
         return "ruined";
@@ -575,9 +635,18 @@
 
       document.getElementById("date").textContent = round.date;
       document.getElementById("headline").textContent = round.headline;
-      document.getElementById("situation").textContent = round.situation;
 
-      // Add this round's price point to both charts. Once per round,
+      // The situation text is shared by everyone, then optionally has a
+      // path-specific paragraph added. This is how one round can tell a
+      // job player they have been laid off and a business player their
+      // takings have collapsed, without writing the whole round twice.
+      var situationText = round.situation;
+      if (round.situationAppend && state.path && round.situationAppend[state.path]) {
+        situationText = situationText + "\n\n" + round.situationAppend[state.path];
+      }
+      document.getElementById("situation").textContent = situationText;
+
+      // Add this round's price point to all four charts. Once per round,
       // right here, covers every round including the final one. Skipped
       // entirely if the charts failed to load — see chartsAvailable.
       if (chartsAvailable) {
@@ -603,16 +672,20 @@
         var button = document.createElement("button");
         button.textContent = choice.label;
         // Clicking any choice just moves on to the next round in the list.
-        // There's no branching yet — every choice leads to the same next round.
+        // There's no branching in WHICH round comes next — only in which
+        // choices and text are shown, based on path.
         button.onclick = function () {
-          // Round 10: skip this round's income credit if the player is
-          // carrying the income_exposed flag from round 6 — their income
-          // source is gone for this round only.
-          if (round.id === "r10" && round10IncomeIsExposed()) {
-            // no income this round
-          } else {
-            creditIncome();
+          // Rounds 8 and 10: unemployment lands before anything else in
+          // the round, including before wages are credited. A player laid
+          // off in 1932 is not paid for 1932.
+          if (round.id === "r8") {
+            applyRound8ShortTime();
           }
+          if (round.id === "r10") {
+            applyRound10Layoff();
+          }
+
+          creditIncome();
 
           // Round 4: this round's buy/sell choices transact at the
           // invented mid-round bounce price, not the round's listed price.
