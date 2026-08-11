@@ -70,6 +70,10 @@
   #charts > div {
     flex: 1;
     min-width: 0;
+    /* Chart.js needs its container to have an actual CSS height (not
+       just the canvas's HTML height attribute) or it misjudges its own
+       proportions on first render. */
+    height: 140px;
   }
   #charts h3 {
     font-family: sans-serif;
@@ -164,43 +168,44 @@
     var goldChart;
 
     function initCharts() {
-      var chartOptions = {
-        responsive: true,
-        animation: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { beginAtZero: true },
-          // Dates are longer strings than "r1" — angle them so they
-          // don't overlap on a chart this small.
-          x: { ticks: { font: { size: 9 }, maxRotation: 55, minRotation: 55 } }
-        }
-      };
-
+      // A fixed ceiling (rather than auto-scaling) so the bar's height
+      // is comparable round to round — otherwise a chart that rescales
+      // itself every round would hide how big the actual price move was.
       dowChart = new Chart(document.getElementById("dow-chart"), {
-        type: "line",
-        data: { labels: [], datasets: [{ label: "Dow", data: [], borderColor: "#a33", tension: 0 }] },
-        options: chartOptions
+        type: "bar",
+        data: { labels: [""], datasets: [{ label: "Dow", data: [0], backgroundColor: "#a33" }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, max: 400 } }
+        }
       });
 
       goldChart = new Chart(document.getElementById("gold-chart"), {
-        type: "line",
-        data: { labels: [], datasets: [{ label: "Gold ($/oz)", data: [], borderColor: "#a90", tension: 0 }] },
-        options: chartOptions
+        type: "bar",
+        data: { labels: [""], datasets: [{ label: "Gold ($/oz)", data: [0], backgroundColor: "#a90" }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, max: 40 } }
+        }
       });
     }
 
-    // Adds one more point to each chart for the given round. Called once
-    // per round from renderRound, so the charts only ever show price
-    // history up to whatever round is currently on screen — not the
-    // rounds still to come. Labeled with the round's date rather than
-    // its id (e.g. "Spring 1929" instead of "r1").
+    // Replaces each chart's single bar with the given round's price.
+    // Called once per round from renderRound, so the bar always shows
+    // the current round's price — not a history of past rounds.
     function updateCharts(round) {
-      dowChart.data.labels.push(round.date);
-      dowChart.data.datasets[0].data.push(ROUNDS.market[round.id].dow);
+      dowChart.data.labels[0] = round.date;
+      dowChart.data.datasets[0].data[0] = ROUNDS.market[round.id].dow;
       dowChart.update();
 
-      goldChart.data.labels.push(round.date);
-      goldChart.data.datasets[0].data.push(getAssetPrice("gold", round.id));
+      goldChart.data.labels[0] = round.date;
+      goldChart.data.datasets[0].data[0] = getAssetPrice("gold", round.id);
       goldChart.update();
     }
 
