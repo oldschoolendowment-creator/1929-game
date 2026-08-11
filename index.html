@@ -11,6 +11,14 @@
 <!-- Chart.js, for the two price charts below. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
+  /* Some hosts (like itch.io) embed this page in a fixed-size box that
+     doesn't scroll on its own. Making our own root element scrollable
+     means the page is still fully reachable even in a short embed,
+     instead of just getting cut off at the bottom. */
+  html {
+    height: 100%;
+    overflow-y: auto;
+  }
   /* Just enough styling to make the text easy to read. No layout tricks yet. */
   body {
     font-family: Georgia, serif;
@@ -63,6 +71,15 @@
     flex: 1;
     min-width: 0;
   }
+  #charts h3 {
+    font-family: sans-serif;
+    font-size: 0.85em;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+    margin: 0 0 4px 0;
+  }
 </style>
 </head>
 <body>
@@ -80,8 +97,14 @@
        you only ever see history up to where you currently are, same as
        the player would have at the time. -->
   <div id="charts">
-    <div><canvas id="dow-chart" height="120"></canvas></div>
-    <div><canvas id="gold-chart" height="120"></canvas></div>
+    <div>
+      <h3>Stock</h3>
+      <canvas id="dow-chart" height="120"></canvas>
+    </div>
+    <div>
+      <h3>Gold</h3>
+      <canvas id="gold-chart" height="120"></canvas>
+    </div>
   </div>
 
   <!-- These four elements get their contents replaced every time we show a new round. -->
@@ -145,7 +168,12 @@
         responsive: true,
         animation: false,
         plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } }
+        scales: {
+          y: { beginAtZero: true },
+          // Dates are longer strings than "r1" — angle them so they
+          // don't overlap on a chart this small.
+          x: { ticks: { font: { size: 9 }, maxRotation: 55, minRotation: 55 } }
+        }
       };
 
       dowChart = new Chart(document.getElementById("dow-chart"), {
@@ -164,14 +192,15 @@
     // Adds one more point to each chart for the given round. Called once
     // per round from renderRound, so the charts only ever show price
     // history up to whatever round is currently on screen — not the
-    // rounds still to come.
-    function updateCharts(roundId) {
-      dowChart.data.labels.push(roundId);
-      dowChart.data.datasets[0].data.push(ROUNDS.market[roundId].dow);
+    // rounds still to come. Labeled with the round's date rather than
+    // its id (e.g. "Spring 1929" instead of "r1").
+    function updateCharts(round) {
+      dowChart.data.labels.push(round.date);
+      dowChart.data.datasets[0].data.push(ROUNDS.market[round.id].dow);
       dowChart.update();
 
-      goldChart.data.labels.push(roundId);
-      goldChart.data.datasets[0].data.push(getAssetPrice("gold", roundId));
+      goldChart.data.labels.push(round.date);
+      goldChart.data.datasets[0].data.push(getAssetPrice("gold", round.id));
       goldChart.update();
     }
 
@@ -436,7 +465,7 @@
 
       // Add this round's price point to both charts. Once per round,
       // right here, covers every round including the final one.
-      updateCharts(round.id);
+      updateCharts(round);
 
       // Clear out the old choice buttons before adding new ones.
       var choicesDiv = document.getElementById("choices");
