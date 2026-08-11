@@ -1,0 +1,1 @@
+This is a small turn-based web game built as a single `index.html` file with plain JavaScript and no build step, with all of its content kept separately in `rounds.js`; see [CLAUDE.md](CLAUDE.md) for the project rules that guide how it's built.
