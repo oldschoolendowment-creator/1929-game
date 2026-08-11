@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <title>The Long Fall</title>
 
-<!-- Page-view analytics only (GoatCounter — no cookies, no accounts for
-     players). This is a deliberate, one-off exception to the project's
-     "no external libraries / no CDN links" rule, made specifically for
-     this purpose. Nothing else in the game loads anything external. -->
+<!-- Page-view analytics only (GoatCounter — no cookies, no accounts for players). -->
 <script data-goatcounter="https://oldschoolendowment.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
+
+<!-- Chart.js, for the two price charts below. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   /* Just enough styling to make the text easy to read. No layout tricks yet. */
   body {
@@ -50,7 +50,18 @@
     font-size: 0.9em;
     border-bottom: 1px solid #ccc;
     padding-bottom: 10px;
+    margin-bottom: 10px;
+  }
+  #charts {
+    display: flex;
+    gap: 16px;
     margin-bottom: 24px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #ccc;
+  }
+  #charts > div {
+    flex: 1;
+    min-width: 0;
   }
 </style>
 </head>
@@ -63,6 +74,14 @@
     <span>Debt: $<span id="stat-debt"></span></span>
     <span>Stocks: $<span id="stat-stocks"></span></span>
     <span>Gold: $<span id="stat-gold"></span></span>
+  </div>
+
+  <!-- Price charts. Each fills in one more point as a new round is shown —
+       you only ever see history up to where you currently are, same as
+       the player would have at the time. -->
+  <div id="charts">
+    <div><canvas id="dow-chart" height="120"></canvas></div>
+    <div><canvas id="gold-chart" height="120"></canvas></div>
   </div>
 
   <!-- These four elements get their contents replaced every time we show a new round. -->
@@ -114,6 +133,46 @@
       document.getElementById("stat-debt").textContent = Math.round(state.debt);
       document.getElementById("stat-stocks").textContent = state.stocksValue;
       document.getElementById("stat-gold").textContent = state.goldValue;
+    }
+
+    // The two price charts. Both start empty and gain one point per round
+    // — see updateCharts below, called once per round from renderRound.
+    var dowChart;
+    var goldChart;
+
+    function initCharts() {
+      var chartOptions = {
+        responsive: true,
+        animation: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+      };
+
+      dowChart = new Chart(document.getElementById("dow-chart"), {
+        type: "line",
+        data: { labels: [], datasets: [{ label: "Dow", data: [], borderColor: "#a33", tension: 0 }] },
+        options: chartOptions
+      });
+
+      goldChart = new Chart(document.getElementById("gold-chart"), {
+        type: "line",
+        data: { labels: [], datasets: [{ label: "Gold ($/oz)", data: [], borderColor: "#a90", tension: 0 }] },
+        options: chartOptions
+      });
+    }
+
+    // Adds one more point to each chart for the given round. Called once
+    // per round from renderRound, so the charts only ever show price
+    // history up to whatever round is currently on screen — not the
+    // rounds still to come.
+    function updateCharts(roundId) {
+      dowChart.data.labels.push(roundId);
+      dowChart.data.datasets[0].data.push(ROUNDS.market[roundId].dow);
+      dowChart.update();
+
+      goldChart.data.labels.push(roundId);
+      goldChart.data.datasets[0].data.push(getAssetPrice("gold", roundId));
+      goldChart.update();
     }
 
     // Looks up what one "unit" of an asset costs in a given round.
@@ -375,6 +434,10 @@
       document.getElementById("headline").textContent = round.headline;
       document.getElementById("situation").textContent = round.situation;
 
+      // Add this round's price point to both charts. Once per round,
+      // right here, covers every round including the final one.
+      updateCharts(round.id);
+
       // Clear out the old choice buttons before adding new ones.
       var choicesDiv = document.getElementById("choices");
       choicesDiv.innerHTML = "";
@@ -438,6 +501,10 @@
 
     // Fill in the status bar with the starting values.
     updateStatusBar();
+
+    // Set up the (empty) charts before the first round tries to add a
+    // point to them.
+    initCharts();
 
     // Show the first round as soon as the page loads.
     renderRound(currentRoundIndex);
