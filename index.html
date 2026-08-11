@@ -1,1 +1,440 @@
-Placeholder — game coming soon.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Long Fall</title>
+<style>
+  /* Just enough styling to make the text easy to read. No layout tricks yet. */
+  body {
+    font-family: Georgia, serif;
+    max-width: 700px;
+    margin: 40px auto;
+    padding: 0 20px;
+    line-height: 1.5;
+    color: #222;
+  }
+  #date {
+    color: #666;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  #headline {
+    font-size: 1.6em;
+    margin: 4px 0 16px 0;
+  }
+  #situation {
+    margin-bottom: 24px;
+  }
+  button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 12px;
+    margin-bottom: 10px;
+    font-family: inherit;
+    font-size: 1em;
+    cursor: pointer;
+  }
+  #statusbar {
+    display: flex;
+    justify-content: space-between;
+    font-family: sans-serif;
+    font-size: 0.9em;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 10px;
+    margin-bottom: 24px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Shows cash, debt, stocks and gold. Starts at the config values and
+       updates as choices are clicked (cash and debt only, for now). -->
+  <div id="statusbar">
+    <span>Cash: $<span id="stat-cash"></span></span>
+    <span>Debt: $<span id="stat-debt"></span></span>
+    <span>Stocks: $<span id="stat-stocks"></span></span>
+    <span>Gold: $<span id="stat-gold"></span></span>
+  </div>
+
+  <!-- These four elements get their contents replaced every time we show a new round. -->
+  <div id="date"></div>
+  <div id="headline"></div>
+  <div id="situation"></div>
+  <div id="choices"></div>
+
+  <!-- Loads the ROUNDS data object. Must come before our script below. -->
+  <script src="rounds.js"></script>
+  <script>
+    // Which round we're currently showing. Starts at the first one.
+    var currentRoundIndex = 0;
+
+    // The player's current numbers, starting from the config values.
+    // These change as choices are clicked.
+    //
+    // Stocks and gold are tracked as "units" (like shares), not dollars,
+    // because their dollar value moves every round with the market price.
+    // stocksValue/goldValue are the dollar amounts we actually show on
+    // screen, recalculated at the end of every round.
+    var state = {
+      cash: ROUNDS.config.startingCash,
+      debt: ROUNDS.config.startingDebt,
+      stockUnits: ROUNDS.config.startingStocks,
+      goldUnits: ROUNDS.config.startingGold,
+      stocksValue: ROUNDS.config.startingStocks,
+      goldValue: ROUNDS.config.startingGold,
+      // The player's ongoing per-round earnings. A choice's "income"
+      // effect changes this, but — per the schema note in rounds.js —
+      // only takes effect starting the following round.
+      income: ROUNDS.config.startingIncome,
+      // Flags a choice has set so far, e.g. "cash_at_home". Used by
+      // other choices' "requires" gate later in the game.
+      flags: []
+    };
+
+    // True if the player currently has the given flag set.
+    function hasFlag(flagName) {
+      return state.flags.indexOf(flagName) !== -1;
+    }
+
+    // Writes the current state numbers into the status bar on screen.
+    // Rounded to whole dollars for display — selling fractional stock
+    // units (e.g. half of 1.667 units) can otherwise leave cash as an
+    // ugly repeating decimal like 3616.666666666666.
+    function updateStatusBar() {
+      document.getElementById("stat-cash").textContent = Math.round(state.cash);
+      document.getElementById("stat-debt").textContent = Math.round(state.debt);
+      document.getElementById("stat-stocks").textContent = state.stocksValue;
+      document.getElementById("stat-gold").textContent = state.goldValue;
+    }
+
+    // Looks up what one "unit" of an asset costs in a given round.
+    // Stock price comes from that round's Dow figure in the market table.
+    // Gold is fixed at $20.67/oz per config.goldPriceRule.
+    //
+    // overridePrice lets a single choice transact at a different price
+    // than the round's normal one. Only round 4 uses this — see
+    // ROUND_4_BOUNCE_PRICE below for why.
+    function getAssetPrice(asset, roundId, overridePrice) {
+      if (typeof overridePrice === "number") {
+        return overridePrice;
+      }
+      if (asset === "gold") {
+        return 20.67;
+      }
+      return ROUNDS.market[roundId].dow;
+    }
+
+    // Handles a choice's "buy" effect: spend money to acquire units of
+    // an asset. Either a fixed dollar "amount", or a "fraction" of
+    // current cash (used where the content spends a percentage of savings).
+    function applyBuy(buy, roundId, overridePrice) {
+      var price = getAssetPrice(buy.asset, roundId, overridePrice);
+      var dollarAmount;
+
+      if (typeof buy.amount === "number") {
+        dollarAmount = buy.amount;
+      } else if (typeof buy.fraction === "number") {
+        dollarAmount = state.cash * buy.fraction;
+        state.cash = state.cash - dollarAmount;
+      }
+
+      var units = dollarAmount / price;
+      if (buy.asset === "stock") {
+        state.stockUnits = state.stockUnits + units;
+      } else if (buy.asset === "gold") {
+        state.goldUnits = state.goldUnits + units;
+      }
+    }
+
+    // Handles a choice's "sell" effect: sell a fraction of currently
+    // held units of an asset, adding the proceeds straight to cash.
+    function applySell(sell, roundId, overridePrice) {
+      var price = getAssetPrice(sell.asset, roundId, overridePrice);
+      var unitsHeld = sell.asset === "stock" ? state.stockUnits : state.goldUnits;
+      var unitsToSell = unitsHeld * sell.fraction;
+      var proceeds = unitsToSell * price;
+
+      if (sell.asset === "stock") {
+        state.stockUnits = state.stockUnits - unitsToSell;
+      } else if (sell.asset === "gold") {
+        state.goldUnits = state.goldUnits - unitsToSell;
+      }
+      state.cash = state.cash + proceeds;
+    }
+
+    // Recalculates the dollar value of stock and gold holdings using
+    // the given round's prices. Called at the end of every round, per
+    // the design: holdings are revalued each round even if untouched.
+    function revalue(roundId) {
+      state.stocksValue = Math.round(state.stockUnits * getAssetPrice("stock", roundId));
+      state.goldValue = Math.round(state.goldUnits * getAssetPrice("gold", roundId));
+    }
+
+    // Applies a choice's effects to the state: cash, debt, buy, sell and
+    // income. Note: an "income" effect changes the ongoing baseline for
+    // future rounds — it does not add money to cash right now. Crediting
+    // the existing baseline to cash happens separately, once per round,
+    // in the click handler below (see creditIncome).
+    function applyEffects(effects, roundId, overridePrice) {
+      if (typeof effects.cash === "number") {
+        state.cash = state.cash + effects.cash;
+      }
+      if (typeof effects.debt === "number") {
+        state.debt = state.debt + effects.debt;
+      }
+      if (typeof effects.income === "number") {
+        state.income = state.income + effects.income;
+      }
+      if (effects.buy) {
+        applyBuy(effects.buy, roundId, overridePrice);
+      }
+      if (effects.sell) {
+        applySell(effects.sell, roundId, overridePrice);
+      }
+      if (effects.flags) {
+        effects.flags.forEach(function (flag) {
+          if (!hasFlag(flag)) {
+            state.flags.push(flag);
+          }
+        });
+      }
+    }
+
+    // --- Special-round rules ---
+    // These three rounds have mechanics described in rounds.js as plain
+    // "specialRule" text because they don't fit the six-key effects model.
+    // Handled here as one-off rules keyed to the round's id, same as the
+    // margin call rule is handled separately from ordinary effects.
+
+    // Round 4: the source material resolves choices at an intraday
+    // "bounce" price of 260, then revalues whatever's left at the
+    // round's normal close price (198.60, from the market table).
+    var ROUND_4_BOUNCE_PRICE = 260;
+
+    // Round 7: the player's bank fails. Cash that was left "on deposit"
+    // loses 60% of its value; cash withdrawn (cash_at_home) is safe.
+    // Withdrawing half (deposits_exposed_half) means half the cash was
+    // safe and half took the 60% loss, i.e. an overall 30% loss.
+    function applyRound7BankFailure() {
+      if (hasFlag("deposits_exposed_half")) {
+        state.cash = state.cash * 0.7;
+      } else if (hasFlag("deposits_exposed")) {
+        state.cash = state.cash * 0.4;
+      }
+      // cash_at_home alone (fully withdrawn): no loss.
+    }
+
+    // Round 10: a player carrying the income_exposed flag from round 6
+    // loses their income source this round, regardless of what they
+    // choose here. income_protected means income continues as normal,
+    // which is what happens anyway if we simply do nothing special.
+    function round10IncomeIsExposed() {
+      return hasFlag("income_exposed");
+    }
+
+    // Checks a choice's "requires" gate (if it has one) against the
+    // current state. Returns true if the choice should be offered.
+    function choiceIsAvailable(choice) {
+      if (!choice.requires) {
+        return true;
+      }
+      if (choice.requires.debt) {
+        return state.debt > 0;
+      }
+      if (choice.requires.gold) {
+        return state.goldUnits > 0;
+      }
+      if (choice.requires.flag) {
+        return hasFlag(choice.requires.flag);
+      }
+      return true;
+    }
+
+    // Adds this round's earnings (the income baseline built up by
+    // earlier choices) to cash. Called once at the start of handling
+    // each round, before that round's own choice can change the baseline.
+    function creditIncome() {
+      state.cash = state.cash + state.income;
+    }
+
+    // The margin call rule from config.marginCallRule: if debt is more
+    // than everything the player owns, they're wiped out.
+    function isMarginCalled() {
+      var totalAssets = state.cash + state.stocksValue + state.goldValue;
+      return state.debt > totalAssets;
+    }
+
+    // Seizes all holdings and clears debt, per the margin call rule.
+    function seizeEverything() {
+      state.cash = 0;
+      state.debt = 0;
+      state.stockUnits = 0;
+      state.goldUnits = 0;
+      state.stocksValue = 0;
+      state.goldValue = 0;
+    }
+
+    // Replaces the round display with one of the endings from ROUNDS.endings.
+    // Used when the margin call fires mid-game.
+    function renderEnding(endingId) {
+      var ending = ROUNDS.endings.filter(function (e) { return e.id === endingId; })[0];
+
+      document.getElementById("date").textContent = "";
+      document.getElementById("headline").textContent = ending.title;
+      document.getElementById("situation").textContent = ending.text;
+      document.getElementById("choices").innerHTML = "";
+    }
+
+    // Works out which of the four endings the player gets, based on
+    // config.realValueRule: nominal net worth adjusted for the price
+    // level, compared against what they started with.
+    //
+    // NOTE: the original ending descriptions in rounds.js had gaps
+    // between them (e.g. nothing covered real growth between 120% and
+    // 150% of starting, and "preserved" required zero debt with no
+    // fallback for players near that band who still had some debt).
+    // This picks non-overlapping thresholds that cover every case
+    // rather than leaving anyone without an ending. See the written
+    // explanation delivered alongside this change for the exact bands.
+    function pickFinalEnding(realNetWorth, startingRealNetWorth) {
+      if (realNetWorth <= 0) {
+        return "ruined";
+      }
+      var ratio = realNetWorth / startingRealNetWorth;
+      if (ratio >= 1.5) {
+        return "thrived";
+      }
+      if (ratio >= 1) {
+        return "preserved";
+      }
+      return "survived_poorer";
+    }
+
+    // Called when the player reaches the final round. Revalues one last
+    // time, checks the margin call rule exactly as every other round
+    // does, then works out and displays the ending.
+    function showFinalResult(round) {
+      // One last season of income from whatever baseline round 11 set,
+      // same as every other round gets before its own effects apply.
+      creditIncome();
+      revalue(round.id);
+
+      // Starting real net worth: what $2,000 in 1929 (price level 100)
+      // is worth as a baseline for comparison. Used either way below.
+      var startingNominal = ROUNDS.config.startingCash - ROUNDS.config.startingDebt;
+      var startingReal = startingNominal / (ROUNDS.market["r1"].priceLevel / 100);
+
+      var endingId;
+      var realNetWorth;
+
+      if (isMarginCalled()) {
+        seizeEverything();
+        endingId = "ruined";
+        realNetWorth = 0; // everything was just seized
+      } else {
+        // Real net worth = nominal net worth adjusted for the price level,
+        // per config.realValueRule.
+        var nominalNetWorth = state.cash + state.stocksValue + state.goldValue - state.debt;
+        realNetWorth = nominalNetWorth / (ROUNDS.market[round.id].priceLevel / 100);
+        endingId = pickFinalEnding(realNetWorth, startingReal);
+      }
+      updateStatusBar();
+
+      var ending = ROUNDS.endings.filter(function (e) { return e.id === endingId; })[0];
+      var choicesDiv = document.getElementById("choices");
+
+      var title = document.createElement("h2");
+      title.textContent = ending.title;
+      var text = document.createElement("p");
+      text.textContent = ending.text;
+      choicesDiv.appendChild(title);
+      choicesDiv.appendChild(text);
+
+      // Per config.realValueRule: show the price-adjusted numbers behind
+      // the ending. This comparison is described as "the whole lesson".
+      var summary = document.createElement("p");
+      summary.textContent = "Real net worth, adjusted for how much prices changed: $" +
+        Math.round(realNetWorth) + ". You started with $" + Math.round(startingReal) + ".";
+      choicesDiv.appendChild(summary);
+    }
+
+    // Fills the page with the round at the given index.
+    function renderRound(index) {
+      var round = ROUNDS.rounds[index];
+
+      document.getElementById("date").textContent = round.date;
+      document.getElementById("headline").textContent = round.headline;
+      document.getElementById("situation").textContent = round.situation;
+
+      // Clear out the old choice buttons before adding new ones.
+      var choicesDiv = document.getElementById("choices");
+      choicesDiv.innerHTML = "";
+
+      // The last round has no choices — it's where the game ends and
+      // the final scoring happens, instead of showing more buttons.
+      if (round.isEnding) {
+        showFinalResult(round);
+        return;
+      }
+
+      // Only offer choices whose "requires" gate (if any) is currently met.
+      var availableChoices = round.choices.filter(choiceIsAvailable);
+
+      availableChoices.forEach(function (choice) {
+        var button = document.createElement("button");
+        button.textContent = choice.label;
+        // Clicking any choice just moves on to the next round in the list.
+        // There's no branching yet — every choice leads to the same next round.
+        button.onclick = function () {
+          // Round 10: skip this round's income credit if the player is
+          // carrying the income_exposed flag from round 6 — their income
+          // source is gone for this round only.
+          if (round.id === "r10" && round10IncomeIsExposed()) {
+            // no income this round
+          } else {
+            creditIncome();
+          }
+
+          // Round 4: this round's buy/sell choices transact at the
+          // invented mid-round bounce price, not the round's listed price.
+          var overridePrice = round.id === "r4" ? ROUND_4_BOUNCE_PRICE : undefined;
+          applyEffects(choice.effects, round.id, overridePrice);
+
+          // Round 7: apply the bank-failure cash haircut now that this
+          // round's choice has set its flags (cash_at_home etc.).
+          if (round.id === "r7") {
+            applyRound7BankFailure();
+          }
+
+          // Revaluation always uses the round's real listed price — for
+          // round 4 that's 198.60, not the 260 bounce price used above.
+          revalue(round.id);
+
+          // Check the margin call rule before moving on. If it fires,
+          // the game ends here — everything is seized and we stop.
+          if (isMarginCalled()) {
+            seizeEverything();
+            updateStatusBar();
+            renderEnding("ruined");
+            return;
+          }
+
+          updateStatusBar();
+          currentRoundIndex = currentRoundIndex + 1;
+          renderRound(currentRoundIndex);
+        };
+        choicesDiv.appendChild(button);
+      });
+    }
+
+    // Fill in the status bar with the starting values.
+    updateStatusBar();
+
+    // Show the first round as soon as the page loads.
+    renderRound(currentRoundIndex);
+  </script>
+
+</body>
+</html>
