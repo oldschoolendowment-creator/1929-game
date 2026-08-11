@@ -224,44 +224,48 @@
     var goldChart;
 
     function initCharts() {
-      // A fixed ceiling (rather than auto-scaling) so the bar's height
-      // is comparable round to round — otherwise a chart that rescales
-      // itself every round would hide how big the actual price move was.
+      // No fixed ceiling here — unlike the historical charts below, these
+      // track the PLAYER'S OWN holdings in dollars (same numbers as the
+      // status bar), which can end the game anywhere from $0 into the
+      // thousands depending how they played. Auto-scaling lets the axis
+      // fit whatever that turns out to be.
       dowChart = new Chart(document.getElementById("dow-chart"), {
         type: "bar",
-        data: { labels: [""], datasets: [{ label: "Dow", data: [0], backgroundColor: "#a33" }] },
+        data: { labels: [""], datasets: [{ label: "Stocks ($)", data: [0], backgroundColor: "#a33" }] },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           animation: false,
           plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, max: 400 } }
+          scales: { y: { beginAtZero: true } }
         }
       });
 
       goldChart = new Chart(document.getElementById("gold-chart"), {
         type: "bar",
-        data: { labels: [""], datasets: [{ label: "Gold ($/oz)", data: [0], backgroundColor: "#a90" }] },
+        data: { labels: [""], datasets: [{ label: "Gold ($)", data: [0], backgroundColor: "#a90" }] },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           animation: false,
           plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, max: 40 } }
+          scales: { y: { beginAtZero: true } }
         }
       });
     }
 
-    // Replaces each chart's single bar with the given round's price.
-    // Called once per round from renderRound, so the bar always shows
-    // the current round's price — not a history of past rounds.
+    // Replaces each chart's single bar with the player's current holdings
+    // value for that asset — the same numbers shown in the status bar,
+    // not the underlying market price (that's what the historical charts
+    // further down are for). Called once per round from renderRound, so
+    // the bar always shows where things stand right now, not a history.
     function updateCharts(round) {
       dowChart.data.labels[0] = round.date;
-      dowChart.data.datasets[0].data[0] = ROUNDS.market[round.id].dow;
+      dowChart.data.datasets[0].data[0] = state.stocksValue;
       dowChart.update();
 
       goldChart.data.labels[0] = round.date;
-      goldChart.data.datasets[0].data[0] = getAssetPrice("gold", round.id);
+      goldChart.data.datasets[0].data[0] = state.goldValue;
       goldChart.update();
     }
 
@@ -646,23 +650,33 @@
       }
       document.getElementById("situation").textContent = situationText;
 
-      // Add this round's price point to all four charts. Once per round,
-      // right here, covers every round including the final one. Skipped
-      // entirely if the charts failed to load — see chartsAvailable.
-      if (chartsAvailable) {
-        updateCharts(round);
-        updateHistoricalCharts(round);
-      }
-
       // Clear out the old choice buttons before adding new ones.
       var choicesDiv = document.getElementById("choices");
       choicesDiv.innerHTML = "";
 
       // The last round has no choices — it's where the game ends and
       // the final scoring happens, instead of showing more buttons.
+      // showFinalResult does one last revalue of its own, so the chart
+      // update below must come AFTER it here, not before — otherwise the
+      // round-12 bars would show round 11's numbers while the status bar
+      // already shows the true final ones.
       if (round.isEnding) {
         showFinalResult(round);
+        if (chartsAvailable) {
+          updateCharts(round);
+          updateHistoricalCharts(round);
+        }
         return;
+      }
+
+      // Add this round's price point to all four charts. For every other
+      // round, state is already fully settled by this point (the previous
+      // round's click handler ran revalue() before we got here), so it's
+      // fine to do this before building the choice buttons below. Skipped
+      // entirely if the charts failed to load — see chartsAvailable.
+      if (chartsAvailable) {
+        updateCharts(round);
+        updateHistoricalCharts(round);
       }
 
       // Only offer choices whose "requires" gate (if any) is currently met.
