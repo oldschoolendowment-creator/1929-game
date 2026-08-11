@@ -8,7 +8,7 @@
 <script data-goatcounter="https://oldschoolendowment.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
 
-<!-- Chart.js, for the four price charts below. -->
+<!-- Chart.js, for the three charts below. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   /* Some hosts (like itch.io) embed this page in a fixed-size box that
@@ -65,19 +65,9 @@
     margin-bottom: 10px;
   }
   #charts {
-    display: flex;
-    gap: 16px;
     margin-bottom: 24px;
     padding-bottom: 14px;
     border-bottom: 1px solid #ccc;
-  }
-  #charts > div {
-    flex: 1;
-    min-width: 0;
-    /* Chart.js needs its container to have an actual CSS height (not
-       just the canvas's HTML height attribute) or it misjudges its own
-       proportions on first render. */
-    height: 140px;
   }
   #charts h3 {
     font-family: sans-serif;
@@ -87,6 +77,11 @@
     letter-spacing: 0.5px;
     color: #666;
     margin: 0 0 4px 0;
+  }
+  /* Taller than the historical charts' wrap — this one carries a legend
+     and five series instead of one. */
+  #charts .chart-canvas-wrap {
+    height: 260px;
   }
   #historical-charts {
     margin-bottom: 24px;
@@ -127,26 +122,15 @@
     <span>Gold: $<span id="stat-gold"></span></span>
   </div>
 
-  <!-- The player's own numbers, one bar each — same figures as the status
-       bar above, just as a visual cue. Replaced (not accumulated) each
-       round. Order matches the status bar: cash, debt, shares, gold. -->
+  <!-- The player's own numbers over time — same figures as the status bar
+       above, plotted across the whole game so far. Cash, shares and gold
+       stack upward from zero (assets); debt is stored as a negative
+       number so it stacks downward instead. Net worth is a plain line on
+       top, not part of either stack. Gains one point per round — see
+       updateNetWorthChart below. -->
   <div id="charts">
-    <div>
-      <h3>Cash</h3>
-      <canvas id="cash-chart" height="120"></canvas>
-    </div>
-    <div>
-      <h3>Debt</h3>
-      <canvas id="debt-chart" height="120"></canvas>
-    </div>
-    <div>
-      <h3>Shares</h3>
-      <canvas id="shares-chart" height="120"></canvas>
-    </div>
-    <div>
-      <h3>Gold</h3>
-      <canvas id="gold-chart" height="120"></canvas>
-    </div>
+    <h3>Cash, Debt, Shares &amp; Gold</h3>
+    <div class="chart-canvas-wrap"><canvas id="net-worth-chart"></canvas></div>
   </div>
 
   <!-- Real historical prices (not the game's own invented numbers above).
@@ -227,55 +211,61 @@
       document.getElementById("stat-gold").textContent = state.goldValue;
     }
 
-    // The game's own four charts, one bar each: cash, debt, shares, gold.
-    // Same order as the status bar. Each is a single bar for the current
-    // round's numbers, replaced (not accumulated) each round.
-    var cashChart, debtChart, sharesChart, goldChart;
+    // The game's own combined chart: cash, shares and gold stacked
+    // upward as one area (assets), debt stacked downward as a second
+    // area (stored as a negative number so it plots below zero), and
+    // net worth as a plain line over the top of both. Gains one point
+    // per round — see updateNetWorthChart below — so by the end of the
+    // game the whole evolution is visible in one place.
+    var netWorthChart;
 
-    // Builds one of the four single-bar charts. All four use the same
-    // shape, just a different canvas and colour, so this avoids writing
-    // near-identical Chart.js setup code four times over.
-    function makeBarChart(canvasId, color) {
-      return new Chart(document.getElementById(canvasId), {
-        type: "bar",
-        data: { labels: [""], datasets: [{ data: [0], backgroundColor: color }] },
+    function initNetWorthChart() {
+      netWorthChart = new Chart(document.getElementById("net-worth-chart"), {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [
+            { label: "Cash", data: [], backgroundColor: "#369", borderColor: "#369", fill: true, stack: "totals", pointRadius: 0 },
+            { label: "Shares", data: [], backgroundColor: "#a33", borderColor: "#a33", fill: true, stack: "totals", pointRadius: 0 },
+            { label: "Gold", data: [], backgroundColor: "#a90", borderColor: "#a90", fill: true, stack: "totals", pointRadius: 0 },
+            { label: "Debt", data: [], backgroundColor: "#c60", borderColor: "#c60", fill: true, stack: "totals", pointRadius: 0 },
+            // Not part of the "totals" stack — this is a plain overlay
+            // line, not another area to add on top of the others.
+            { label: "Net worth", data: [], borderColor: "#222", backgroundColor: "transparent", fill: false, borderWidth: 2, pointRadius: 0 }
+          ]
+        },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           animation: false,
-          plugins: { legend: { display: false } },
-          // No fixed ceiling — unlike the historical charts below, these
-          // track the PLAYER'S OWN numbers in dollars (same as the status
-          // bar), which can end the game anywhere from $0 into the
-          // thousands depending how they played. Auto-scaling fits that.
-          scales: { y: { beginAtZero: true } }
+          plugins: {
+            legend: { display: true, position: "bottom", labels: { font: { size: 10 }, boxHeight: 10 } }
+          },
+          // stacked:true makes cash/shares/gold (positive) stack upward
+          // and debt (stored negative) stack downward, both from zero.
+          // No fixed ceiling/floor — this can range anywhere depending
+          // how the game was played.
+          scales: {
+            y: { stacked: true },
+            x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 45 } }
+          }
         }
       });
     }
 
-    function initCharts() {
-      cashChart = makeBarChart("cash-chart", "#369");
-      debtChart = makeBarChart("debt-chart", "#c60");
-      sharesChart = makeBarChart("shares-chart", "#a33");
-      goldChart = makeBarChart("gold-chart", "#a90");
-    }
+    // Adds one more point to the combined chart for the given round —
+    // called once per round from renderRound, so it builds up across
+    // the whole game rather than showing just the current round.
+    function updateNetWorthChart(round) {
+      var netWorth = state.cash + state.stocksValue + state.goldValue - state.debt;
 
-    // Replaces each chart's single bar with the player's current numbers
-    // — the same figures shown in the status bar, not any underlying
-    // market price (that's what the historical charts further down are
-    // for). Called once per round from renderRound, so each bar always
-    // shows where things stand right now, not a history.
-    function updateCharts(round) {
-      [cashChart, debtChart, sharesChart, goldChart].forEach(function (chart) {
-        chart.data.labels[0] = round.date;
-      });
-      cashChart.data.datasets[0].data[0] = Math.round(state.cash);
-      debtChart.data.datasets[0].data[0] = Math.round(state.debt);
-      sharesChart.data.datasets[0].data[0] = state.stocksValue;
-      goldChart.data.datasets[0].data[0] = state.goldValue;
-      [cashChart, debtChart, sharesChart, goldChart].forEach(function (chart) {
-        chart.update();
-      });
+      netWorthChart.data.labels.push(round.date);
+      netWorthChart.data.datasets[0].data.push(Math.round(state.cash));
+      netWorthChart.data.datasets[1].data.push(state.stocksValue);
+      netWorthChart.data.datasets[2].data.push(state.goldValue);
+      netWorthChart.data.datasets[3].data.push(-Math.round(state.debt)); // negative: plots below zero
+      netWorthChart.data.datasets[4].data.push(Math.round(netWorth));
+      netWorthChart.update();
     }
 
     // The two REAL historical price charts (separate from the game's
@@ -667,24 +657,24 @@
       // the final scoring happens, instead of showing more buttons.
       // showFinalResult does one last revalue of its own, so the chart
       // update below must come AFTER it here, not before — otherwise the
-      // round-12 bars would show round 11's numbers while the status bar
-      // already shows the true final ones.
+      // final point on the chart would show round 11's numbers while the
+      // status bar already shows the true final ones.
       if (round.isEnding) {
         showFinalResult(round);
         if (chartsAvailable) {
-          updateCharts(round);
+          updateNetWorthChart(round);
           updateHistoricalCharts(round);
         }
         return;
       }
 
-      // Add this round's price point to all four charts. For every other
+      // Add this round's point to the combined chart. For every other
       // round, state is already fully settled by this point (the previous
       // round's click handler ran revalue() before we got here), so it's
       // fine to do this before building the choice buttons below. Skipped
       // entirely if the charts failed to load — see chartsAvailable.
       if (chartsAvailable) {
-        updateCharts(round);
+        updateNetWorthChart(round);
         updateHistoricalCharts(round);
       }
 
@@ -752,7 +742,7 @@
     // choices below must still work even if they can't load.
     var chartsAvailable = true;
     try {
-      initCharts();
+      initNetWorthChart();
       initHistoricalCharts();
     } catch (e) {
       chartsAvailable = false;
