@@ -133,10 +133,20 @@
     <div class="chart-canvas-wrap"><canvas id="net-worth-chart"></canvas></div>
   </div>
 
+  <!-- These four elements get their contents replaced every time we show a new round. -->
+  <div id="date"></div>
+  <div id="headline"></div>
+  <div id="situation"></div>
+  <div id="choices"></div>
+
   <!-- Real historical prices (not the game's own invented numbers above).
        Each shows real data only up to the current round's date — see
        asOfDate on each round in rounds.js — so more of the real history
-       is revealed as you play, same idea as the two charts above. -->
+       is revealed as you play, same idea as the chart above. Placed below
+       the round text/choices deliberately: this is supplementary context,
+       not part of the core loop, so the chart showing the IMPACT of your
+       last choice on net worth stays right above the fold instead of
+       being separated from it by these two reference charts. -->
   <div id="historical-charts">
     <div>
       <h3>Dow Jones Industrial Average</h3>
@@ -149,12 +159,6 @@
       <p class="chart-source" id="historical-gold-source"></p>
     </div>
   </div>
-
-  <!-- These four elements get their contents replaced every time we show a new round. -->
-  <div id="date"></div>
-  <div id="headline"></div>
-  <div id="situation"></div>
-  <div id="choices"></div>
 
   <!-- Loads the ROUNDS data object. Must come before our script below. -->
   <script src="rounds.js"></script>
